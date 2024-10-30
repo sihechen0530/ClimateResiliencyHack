@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
-start_month = 9
+start_month = 6
 end_month = 9
 
-start_year = 2024
+start_year = 2020
 end_year = 2024
 
 def get_dates(start_year, end_year, start_month, end_month, start_day=1, end_day=30):

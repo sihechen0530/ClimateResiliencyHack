@@ -5,6 +5,9 @@ import multiprocessing
 from bs4 import BeautifulSoup
 import numpy as np
 import pandas as pd
+import os
+
+data_dir = "data"
 
 url_template = "https://www.almanac.com/weather/history/WA/{}/{}"
 headers = {
@@ -47,7 +50,7 @@ def get_url(location, date):
 def get_weather_info(location, date):
     print("start processing", location, date)
     url = get_url(location, date)
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=5)
 
     if response.status_code == 200:
         webpage_content = response.text
@@ -77,46 +80,49 @@ def get_weather_info(location, date):
     print("finished processing", location, date)
     return data
 
+def get_batch_weather_info(location, multiple_dates):
+    ret = []
+    for date in multiple_dates:
+        try:
+            ret.append(get_weather_info(location, date))
+        except Exception as e:
+            print("Exception!!", e)
+    return ret
 
-async_res = []
-with multiprocessing.Pool() as pool:
-    for location in locations:
-        for date in dates:
+
+processes_num = 22
+for location in locations:
+    async_res = []
+    with multiprocessing.Pool(processes_num) as pool:
+        i = 0
+        batch_size = len(dates) // processes_num
+        for i in range(processes_num):
             async_res.append(
                 pool.apply_async(
-                    func=get_weather_info,
+                    func=get_batch_weather_info,
                     args=(
                         location,
-                        date,
+                        dates[i * batch_size:i * batch_size + batch_size],
                     ),
                 )
             )
+        pool.close()
+        pool.join()
 
-res = []
-for r in async_res:
-    try:
-        if r.get():
-            res.append(r.get())
-    except Exception as e:
-        print("Exception", e)
+    res = []
+    for r in async_res:
+        try:
+            if r.get():
+                res.extend(r.get())
+        except Exception as e:
+            print("Exception", e)
 
 
-# columns = ["location", "date"] + field_order
+    columns = ["location", "date"] + field_order
 
-# with open("data.raw", "w") as f:
-#     f.write(",".join(columns))
+    df = pd.DataFrame(
+        res,
+        columns=columns,
+    )
 
-# res = []
-
-# for location in locations:
-#     for date in dates:
-#         res.append(get_weather_info(location, date))
-#         with open("data.raw", "a") as f:
-#             f.write(",".join([f"{x}" for x in res[-1]]) + "\n")
-
-df = pd.DataFrame(
-    res,
-    columns=columns,
-)
-
-df.to_csv("weather_data.csv", index=False)
+    df.to_csv(f"{data_dir}/{location}.csv", index=False)
